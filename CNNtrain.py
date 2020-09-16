@@ -1,0 +1,128 @@
+import keras
+from google.colab import drive 
+drive.mount("/content/drive", force_remount=True)
+import numpy as np
+from keras import layers, models, optimizers
+from keras.preprocessing.image import ImageDataGenerator, img_to_array, load_img
+from sklearn.model_selection import train_test_split
+import os, cv2
+import matplotlib.pyplot as plt
+import random
+############################ DATA PROCESSING #####################################
+
+datadir="/content/drive/My Drive/hi"
+
+x_good = []
+for file in os.listdir("/content/drive/My Drive/hi/good"):
+	x_good.append(datadir+"/good/"+file)
+
+x_bad = []
+for file in os.listdir("/content/drive/My Drive/hi/bad"):
+	x_bad.append(datadir+"/bad/"+file)
+
+# IMAGES
+x = x_good + x_bad 
+random.shuffle(x)
+
+# LABELS
+y = [] # 0:bad and 1:good
+for i in x:
+	if "good" in i:
+		y.append(1)
+	else:
+		y.append(0)
+
+
+nrows = 150
+ncols = 150
+channels = 3 # RGB
+
+# List of images
+X = []
+for i in x:
+	X.append(cv2.resize(cv2.imread(i,cv2.IMREAD_COLOR), (nrows,ncols), interpolation=cv2.INTER_CUBIC))
+
+# Convert to numpy array
+X = np.array(X)
+y = np.array(y)
+
+percent_to_val = 0.30 # 30% data is assigned to validation, 70% to training
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size = percent_to_val, random_state=2)
+
+################################ MODEL ##########################################
+batch_size = 32
+
+model = models.Sequential()
+model.add(layers.Conv2D(32,(3,3),activation='relu',input_shape=(150,150,3)))
+model.add(layers.MaxPooling2D((2,2)))
+model.add(layers.Conv2D(64, (3,3),activation='relu'))
+model.add(layers.MaxPooling2D((2,2)))
+model.add(layers.Conv2D(128, (3,3),activation='relu'))
+model.add(layers.MaxPooling2D((2,2)))
+model.add(layers.Conv2D(128, (3,3),activation='relu'))
+model.add(layers.MaxPooling2D((2,2)))
+model.add(layers.Flatten())
+model.add(layers.Dropout(0.5))
+model.add(layers.Dense(512, activation='relu'))
+model.add(layers.Dense(1,activation='sigmoid')) 
+
+model.summary()
+
+model.compile(loss="binary_crossentropy", optimizer=optimizers.RMSprop(lr=1e-4) ,metrics=['acc'])
+
+################################### IMAGE DATA GENERATOR ###################################
+
+train_datagen = ImageDataGenerator(
+	rescale = 1./255,
+	rotation_range = 40,
+	width_shift_range=0.2,
+	height_shift_range=0.2,
+	shear_range=0.2,
+	zoom_range=0.2,
+	horizontal_flip=True,
+	)
+
+val_datagen=ImageDataGenerator(rescale=1./255)
+################################## TRAINING ################
+train_generator = train_datagen.flow(X_train, y_train, batch_size=batch_size)
+val_generator = val_datagen.flow(X_val, y_val, batch_size=batch_size)
+ntrain = len(X_train)
+nval = len(X_val)
+
+
+history = model.fit_generator(
+	train_generator,
+	steps_per_epoch=ntrain,
+	epochs=32,
+	validation_data=val_generator,
+	validation_steps=nval 
+	)
+
+############### SAVE WEIGHTS ########################
+
+model.save_weights('/content/drive/My Drive/model_weights.h5')
+model.save('/content/drive/My Drive/model_keras.h5')
+
+#######################################################
+# TODO: PLOT graph, to put into the poster
+acc = history.history['acc']
+val_acc = history.history['val_acc']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs = range(1,len(acc)+1)
+
+plt.plot(epochs, acc,'b',label='Training accuracy')
+plt.plot(epochs, val_acc, 'r', label = 'Validation accuracy')
+plt.title('Training and Validation accuracy')
+plt.legend()
+
+plt.figure()
+
+plt.plot(epochs, loss, 'b', label='Training loss')
+plt.plot(epochs, val_loss, 'r', label = 'Validation loss')
+plt.title('Training and Validation loss')
+plt.legend()
+
+plt.show()
+#######################################################
